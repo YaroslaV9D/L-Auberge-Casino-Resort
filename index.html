@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smooth Image Sequence Scroll - No Browser Scrollbar</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #050816;
+      color: white;
+      font-family: "Raleway", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      overscroll-behavior: none;
+    }
+
+    html::-webkit-scrollbar,
+    body::-webkit-scrollbar,
+    ::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+    }
+
+    .canvas-stage {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background: #050816;
+      overflow: hidden;
+    }
+
+    #sequenceCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .page-loader {
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      display: grid;
+      place-items: center;
+      background: #000;
+      transform: translateY(0);
+      transition: transform 1200ms cubic-bezier(0.77, 0, 0.175, 1);
+    }
+
+    .page-loader.is-hidden {
+      transform: translateY(-100%);
+    }
+
+    .loader-circle {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.25);
+      border-top-color: white;
+      animation: spin 900ms linear infinite;
+      transition:
+        opacity 450ms ease,
+        transform 450ms ease;
+    }
+
+    .page-loader.is-hidden .loader-circle {
+      opacity: 0;
+      transform: scale(0.85);
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .top-nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      z-index: 30;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 22px 7vw;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      background: rgba(5, 8, 22, 0.25);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    }
+
+    .top-links {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(22px, 4vw, 54px);
+    }
+
+    .top-links a {
+      position: relative;
+      color: rgba(255,255,255,0.72);
+      text-decoration: none;
+      font-size: 0.78rem;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 6px 0;
+      text-shadow: 0 2px 18px rgba(0,0,0,0.35);
+      transition: color 260ms ease;
+    }
+
+    .top-links a::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -4px;
+      width: 18px;
+      height: 1px;
+      background: white;
+      transform: translateX(-50%) scaleX(0);
+      transform-origin: center;
+      opacity: 0;
+      transition:
+        transform 320ms cubic-bezier(0.16, 1, 0.3, 1),
+        opacity 320ms ease;
+    }
+
+    .top-links a:hover,
+    .top-links a.active {
+      color: white;
+    }
+
+    .top-links a.active::after {
+      opacity: 1;
+      transform: translateX(-50%) scaleX(1);
+    }
+
+    .fixed-nav {
+      position: fixed;
+      top: 50%;
+      right: 28px;
+      transform: translateY(-50%);
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .fixed-nav a {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.8);
+      background: rgba(255,255,255,0.12);
+      box-shadow: 0 2px 14px rgba(0,0,0,0.35);
+      transition:
+        transform 0.35s ease,
+        background 0.35s ease,
+        border-color 0.35s ease;
+    }
+
+    .fixed-nav a.active {
+      transform: scale(1.45);
+      background: white;
+      border-color: white;
+    }
+
+    .section-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    section.visual-copy {
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 100%;
+      min-height: 42vh;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-start;
+      padding: 0 7vw 76px;
+      opacity: 0;
+      transform: translateY(18px);
+      transition:
+        opacity 420ms cubic-bezier(0.16, 1, 0.3, 1),
+        transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    section.visual-copy.active {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .content {
+      width: 100%;
+      max-width: 520px;
+      text-shadow: 0 2px 20px rgba(0,0,0,0.42);
+    }
+
+    .eyebrow {
+      color: rgba(255,255,255,0.82);
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-weight: 600;
+      font-size: 0.62rem;
+      margin-bottom: 10px;
+    }
+
+    h1,
+    h2 {
+      font-size: clamp(1.85rem, 3.8vw, 4rem);
+      line-height: 0.98;
+      letter-spacing: -0.045em;
+      max-width: 560px;
+      font-weight: 600;
+    }
+
+    p {
+      margin-top: 14px;
+      max-width: 440px;
+      color: rgba(255,255,255,0.82);
+      font-size: clamp(0.82rem, 1.25vw, 1rem);
+      font-weight: 400;
+      line-height: 1.6;
+    }
+
+    .section-number {
+      margin-top: 18px;
+      color: rgba(255,255,255,0.7);
+      font-size: 0.68rem;
+      font-weight: 500;
+      letter-spacing: 0.16em;
+    }
+
+    .progress {
+      position: fixed;
+      left: 0;
+      bottom: 0;
+      width: 100%;
+      height: 2px;
+      z-index: 40;
+      background: rgba(255,255,255,0.12);
+    }
+
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      background: white;
+    }
+
+    .loading {
+      position: fixed;
+      left: 7vw;
+      bottom: 28px;
+      z-index: 50;
+      color: rgba(255,255,255,0.72);
+      font-size: 0.68rem;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      pointer-events: none;
+      text-shadow: 0 2px 18px rgba(0,0,0,0.35);
+      transition: opacity 500ms ease;
+    }
+
+    @media (max-width: 760px) {
+      .top-nav {
+        padding: 18px 7vw;
+      }
+
+      .top-links {
+        gap: 18px;
+      }
+
+      .top-links a {
+        font-size: 0.66rem;
+        letter-spacing: 0.08em;
+      }
+
+      .fixed-nav {
+        right: 16px;
+      }
+
+      section.visual-copy {
+        padding: 0 52px 58px 7vw;
+        min-height: 48vh;
+      }
+
+      h1,
+      h2 {
+        font-size: clamp(1.75rem, 8vw, 3rem);
+      }
+
+      p {
+        font-size: 0.85rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page-loader" id="pageLoader">
+    <div class="loader-circle" aria-label="Loading"></div>
+  </div>
+
+  <div class="canvas-stage">
+    <canvas id="sequenceCanvas"></canvas>
+  </div>
+
+  <header class="top-nav">
+    <nav class="top-links">
+      <a href="#scene-1" class="active">Scene 1</a>
+      <a href="#scene-2">Scene 2</a>
+      <a href="#scene-3">Scene 3</a>
+      <a href="#scene-4">Scene 4</a>
+    </nav>
+  </header>
+
+  <nav class="fixed-nav" aria-label="Section navigation">
+    <a href="#scene-1" class="active" aria-label="Go to scene 1"></a>
+    <a href="#scene-2" aria-label="Go to scene 2"></a>
+    <a href="#scene-3" aria-label="Go to scene 3"></a>
+    <a href="#scene-4" aria-label="Go to scene 4"></a>
+  </nav>
+
+  <main class="section-layer">
+    <section class="visual-copy active">
+      <div class="content">
+        <div class="eyebrow">Image sequence scene 1</div>
+        <h1>Scroll controls every frame.</h1>
+        <p>This version uses images instead of MP4, so the animation follows scroll more precisely.</p>
+        <div class="section-number">01 / 04</div>
+      </div>
+    </section>
+
+    <section class="visual-copy">
+      <div class="content">
+        <div class="eyebrow">Image sequence scene 2</div>
+        <h2>The next sequence starts from the same frame.</h2>
+        <p>The final frame of scene 1 should visually match the first frame of scene 2.</p>
+        <div class="section-number">02 / 04</div>
+      </div>
+    </section>
+
+    <section class="visual-copy">
+      <div class="content">
+        <div class="eyebrow">Image sequence scene 3</div>
+        <h2>No video seeking issues.</h2>
+        <p>The browser swaps exact images on canvas according to the current scroll position.</p>
+        <div class="section-number">03 / 04</div>
+      </div>
+    </section>
+
+    <section class="visual-copy">
+      <div class="content">
+        <div class="eyebrow">Image sequence scene 4</div>
+        <h2>The final frame lands naturally.</h2>
+        <p>Adjust scrollSegmentHeight to control how fast or slow each sequence feels.</p>
+        <div class="section-number">04 / 04</div>
+      </div>
+    </section>
+  </main>
+
+  <div class="loading" id="loadingText">Loading frames...</div>
+
+  <div class="progress">
+    <div class="progress-fill"></div>
+  </div>
+
+  <script>
+    const sequences = [
+      {
+        folder: "frames/scene-01",
+        frameCount: 120,
+        extension: "jpg"
+      },
+      {
+        folder: "frames/scene-02",
+        frameCount: 120,
+        extension: "jpg"
+      },
+      {
+        folder: "frames/scene-03",
+        frameCount: 120,
+        extension: "jpg"
+      },
+      {
+        folder: "frames/scene-04",
+        frameCount: 120,
+        extension: "jpg"
+      }
+    ];
+
+    /*
+      Virtual scroll. No native page scroll = no browser scrollbar.
+      Lower scrollEase = smoother and more delayed.
+    */
+    const scrollEase = 0.085;
+
+    /*
+      Scroll distance per sequence in viewport units.
+      Bigger = slower animation.
+      Smaller = faster animation.
+    */
+    const scrollSegmentHeight = 1.25;
+
+    /*
+      Multiplier for mouse wheel sensitivity.
+      Increase if the page feels too slow.
+      Decrease if it feels too fast.
+    */
+    const wheelMultiplier = 1;
+
+    const canvas = document.getElementById("sequenceCanvas");
+    const context = canvas.getContext("2d");
+    const loadingText = document.getElementById("loadingText");
+    const pageLoader = document.getElementById("pageLoader");
+
+    const visualSections = Array.from(document.querySelectorAll(".visual-copy"));
+    const dotLinks = Array.from(document.querySelectorAll(".fixed-nav a"));
+    const textNavLinks = Array.from(document.querySelectorAll(".top-links a"));
+    const navLinks = Array.from(document.querySelectorAll(".fixed-nav a, .top-links a"));
+    const progressFill = document.querySelector(".progress-fill");
+
+    let images = [];
+    let activeSceneIndex = 0;
+    let activeFrameIndex = 0;
+    let loadedCount = 0;
+    let totalFrames = sequences.reduce((sum, sequence) => sum + sequence.frameCount, 0);
+
+    let targetScroll = 0;
+    let smoothScroll = 0;
+    let maxUsefulScroll = 1;
+    let touchStartY = 0;
+    let loaderDismissed = false;
+
+    function padNumber(number, size) {
+      return String(number).padStart(size, "0");
+    }
+
+    function getFramePath(sequence, frameNumber) {
+      return `${sequence.folder}/frame_${padNumber(frameNumber, 4)}.${sequence.extension}`;
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function updateScrollGeometry() {
+      maxUsefulScroll = window.innerHeight * scrollSegmentHeight * sequences.length;
+      targetScroll = clamp(targetScroll, 0, maxUsefulScroll - 1);
+      smoothScroll = clamp(smoothScroll, 0, maxUsefulScroll - 1);
+    }
+
+    function dismissLoader() {
+      if (loaderDismissed) {
+        return;
+      }
+
+      loaderDismissed = true;
+      loadingText.style.opacity = "0";
+      pageLoader.classList.add("is-hidden");
+
+      setTimeout(() => {
+        pageLoader.style.display = "none";
+      }, 1250);
+    }
+
+    function preloadImages() {
+      images = sequences.map((sequence) => {
+        const sceneImages = [];
+
+        for (let frameNumber = 1; frameNumber <= sequence.frameCount; frameNumber++) {
+          const image = new Image();
+          image.src = getFramePath(sequence, frameNumber);
+
+          image.onload = () => {
+            loadedCount += 1;
+            loadingText.textContent = `Loading frames ${loadedCount}/${totalFrames}`;
+
+            if (loadedCount === 1) {
+              drawFrame(0, 0);
+            }
+
+            if (loadedCount === totalFrames) {
+              dismissLoader();
+            }
+          };
+
+          image.onerror = () => {
+            loadedCount += 1;
+            console.warn("Missing frame:", image.src);
+
+            if (loadedCount === totalFrames) {
+              dismissLoader();
+            }
+          };
+
+          sceneImages.push(image);
+        }
+
+        return sceneImages;
+      });
+    }
+
+    function resizeCanvas() {
+      const pixelRatio = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * pixelRatio;
+      canvas.height = window.innerHeight * pixelRatio;
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      drawFrame(activeSceneIndex, activeFrameIndex);
+    }
+
+    function drawImageCover(image) {
+      if (!image || !image.complete || !image.naturalWidth) {
+        return;
+      }
+
+      const canvasWidth = window.innerWidth;
+      const canvasHeight = window.innerHeight;
+      const imageRatio = image.naturalWidth / image.naturalHeight;
+      const canvasRatio = canvasWidth / canvasHeight;
+
+      let drawWidth;
+      let drawHeight;
+      let offsetX;
+      let offsetY;
+
+      if (imageRatio > canvasRatio) {
+        drawHeight = canvasHeight;
+        drawWidth = canvasHeight * imageRatio;
+        offsetX = (canvasWidth - drawWidth) / 2;
+        offsetY = 0;
+      } else {
+        drawWidth = canvasWidth;
+        drawHeight = canvasWidth / imageRatio;
+        offsetX = 0;
+        offsetY = (canvasHeight - drawHeight) / 2;
+      }
+
+      context.clearRect(0, 0, canvasWidth, canvasHeight);
+      context.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
+    }
+
+    function drawFrame(sceneIndex, frameIndex) {
+      const sceneImages = images[sceneIndex];
+
+      if (!sceneImages) {
+        return;
+      }
+
+      const image = sceneImages[frameIndex];
+
+      if (!image) {
+        return;
+      }
+
+      activeSceneIndex = sceneIndex;
+      activeFrameIndex = frameIndex;
+      drawImageCover(image);
+    }
+
+    function setActiveScene(index) {
+      activeSceneIndex = clamp(index, 0, sequences.length - 1);
+
+      visualSections.forEach((section, sectionIndex) => {
+        section.classList.toggle("active", sectionIndex === activeSceneIndex);
+      });
+
+      dotLinks.forEach((link, linkIndex) => {
+        link.classList.toggle("active", linkIndex === activeSceneIndex);
+      });
+
+      textNavLinks.forEach((link, linkIndex) => {
+        link.classList.toggle("active", linkIndex === activeSceneIndex);
+      });
+    }
+
+    function updateFromVirtualScroll() {
+      smoothScroll += (targetScroll - smoothScroll) * scrollEase;
+
+      if (Math.abs(targetScroll - smoothScroll) < 0.1) {
+        smoothScroll = targetScroll;
+      }
+
+      const clampedScroll = clamp(smoothScroll, 0, maxUsefulScroll - 1);
+      const globalProgress = clampedScroll / maxUsefulScroll;
+      const rawSceneProgress = globalProgress * sequences.length;
+
+      const sceneIndex = clamp(
+        Math.floor(rawSceneProgress),
+        0,
+        sequences.length - 1
+      );
+
+      const localProgress = clamp(rawSceneProgress - sceneIndex, 0, 1);
+      const frameCount = sequences[sceneIndex].frameCount;
+
+      const frameIndex = clamp(
+        Math.round(localProgress * (frameCount - 1)),
+        0,
+        frameCount - 1
+      );
+
+      setActiveScene(sceneIndex);
+      drawFrame(sceneIndex, frameIndex);
+
+      progressFill.style.width = `${globalProgress * 100}%`;
+
+      requestAnimationFrame(updateFromVirtualScroll);
+    }
+
+    function goToScene(index) {
+      const sceneIndex = clamp(index, 0, sequences.length - 1);
+      const segmentPx = window.innerHeight * scrollSegmentHeight;
+      targetScroll = clamp(sceneIndex * segmentPx, 0, maxUsefulScroll - 1);
+    }
+
+    window.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      targetScroll = clamp(
+        targetScroll + event.deltaY * wheelMultiplier,
+        0,
+        maxUsefulScroll - 1
+      );
+    }, { passive: false });
+
+    window.addEventListener("touchstart", (event) => {
+      touchStartY = event.touches[0].clientY;
+    }, { passive: true });
+
+    window.addEventListener("touchmove", (event) => {
+      event.preventDefault();
+
+      const touchY = event.touches[0].clientY;
+      const delta = touchStartY - touchY;
+
+      targetScroll = clamp(
+        targetScroll + delta * 1.45,
+        0,
+        maxUsefulScroll - 1
+      );
+
+      touchStartY = touchY;
+    }, { passive: false });
+
+    window.addEventListener("keydown", (event) => {
+      const step = window.innerHeight * 0.55;
+
+      if (["ArrowDown", "PageDown", " "].includes(event.key)) {
+        event.preventDefault();
+        targetScroll = clamp(targetScroll + step, 0, maxUsefulScroll - 1);
+      }
+
+      if (["ArrowUp", "PageUp"].includes(event.key)) {
+        event.preventDefault();
+        targetScroll = clamp(targetScroll - step, 0, maxUsefulScroll - 1);
+      }
+
+      if (event.key === "Home") {
+        event.preventDefault();
+        targetScroll = 0;
+      }
+
+      if (event.key === "End") {
+        event.preventDefault();
+        targetScroll = maxUsefulScroll - 1;
+      }
+    });
+
+    navLinks.forEach((link, index) => {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        goToScene(index % sequences.length);
+      });
+    });
+
+    window.addEventListener("resize", () => {
+      updateScrollGeometry();
+      resizeCanvas();
+    });
+
+    updateScrollGeometry();
+    preloadImages();
+    resizeCanvas();
+    updateFromVirtualScroll();
+  </script>
+</body>
+</html>
